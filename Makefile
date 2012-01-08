@@ -1,55 +1,59 @@
-CC           = gcc
-CFLAGS      ?= -O2 -pipe -Wall -Wextra -pedantic
-STRIP        = strip
-INSTALL      = install
-UNAME        = uname
+CC          = gcc
+CFLAGS     ?= -O2 -pipe -Wall -Wextra -pedantic
+CFLAGS     += -std=c99
+STRIP       = strip
+INSTALL     = install
+UNAME       = uname
+LUA         = lua
 
-PREFIX       = /usr/local
-
-OS           = $(shell $(UNAME))
-LUA_INCDIR   = $(PREFIX)/include
-LUA_SHAREDIR = $(PREFIX)/share/lua/5.1
-LUA_LIBDIR   = $(PREFIX)/lib/lua/5.1
+OS          = $(shell $(UNAME))
+LUA_INCDIR  =
+LUA_PATH    = $(shell $(LUA) -e 'print(package.path:match("(/[^;]*)/%?"))')
+LUA_CPATH   = $(shell $(LUA) -e 'print(package.cpath:match("(/[^;]*)/%?"))')
 
 ifeq ($(OS),Darwin)
-SHARED       = -dynamiclib -Wl,-undefined,dynamic_lookup
-STRIP_ARGS   = -u -r
+SHARED      = -dynamiclib -Wl,-undefined,dynamic_lookup
+STRIP_ARGS  = -x
 else
-SHARED       = -shared
-endif
-
-ifdef NDEBUG
-CFLAGS      += -DNDEBUG
+SHARED      = -shared
 endif
 
 clibs = gettimeofday
 
+ifdef NDEBUG
+CFLAGS     += -DNDEBUG
+endif
+
+ifdef V
+E=@\#
+Q=
+else
+E=@echo
+Q=@
+endif
+
 .PHONY: all strip install clean
-.PRECIOUS: %.pic.o
+.PRECIOUS: %.o
 
 all: $(clibs:%=%.so)
 
-%.pic.o: %.c
-	@echo '  CC $@'
-	@$(CC) $(CFLAGS) -fPIC -nostartfiles -I'$(LUA_INCDIR)' -c $< -o $@
+%.so: %.c
+	$E '  CCLD $@'
+	$Q$(CC) $(CFLAGS) $(LUA_INCDIR:%=-I%) -fPIC -nostartfiles $(SHARED) $< -o $@ $(LDFLAGS)
 
-%.so: %.pic.o
-	@echo '  LD $@'
-	@$(CC) $(SHARED) $(LDFLAGS) $^ -o $@
+cpath-install:
+	$E "  INSTALL -d $(LUA_CPATH)"
+	$Q$(INSTALL) -d $(DESTDIR)$(LUA_CPATH)
 
-libdir-install:
-	@echo "  INSTALL -d $(LUA_LIBDIR)"
-	@$(INSTALL) -d $(DESTDIR)$(LUA_LIBDIR)
-
-%.so-install: %.so libdir-install
-	@echo "  INSTALL $<"
-	@$(INSTALL) $< $(DESTDIR)$(LUA_LIBDIR)/$<
+%.so-install: %.so cpath-install
+	$E "  INSTALL $<"
+	$Q$(INSTALL) $< $(DESTDIR)$(LUA_CPATH)/$<
 
 install: $(clibs:%=%.so-install)
 
 %-strip: %
-	@echo '  STRIP $<'
-	@$(STRIP) $(STRIP_ARGS) $<
+	$E '  STRIP $<'
+	$Q$(STRIP) $(STRIP_ARGS) $<
 
 strip: $(clibs:%=%.so-strip)
 
